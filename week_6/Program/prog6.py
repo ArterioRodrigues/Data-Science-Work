@@ -19,11 +19,11 @@ def import_data(file_name):
     df = pd.read_csv(file_name)
     column = [ "VendorID", "RatecodeID", "store_and_fwd_flag" , "payment_type", "extra", "mta_tax", "tolls_amount", "improvement_surcharge", "congestion_surcharge"]
 
-    df = df.drop(column, axis = 1)
+    df = df.drop(columns = column)
     
     for index, row in df.iterrows():
-        if row["total_amount"] < 0:
-            df = df.drop(index)
+        if float(row["total_amount"]) <= 0:
+            df = df.drop(index, axis = 0)
 
     return df
 
@@ -38,14 +38,15 @@ def add_tip_time_features(df):
         dayofweek: the day of the week that the trip started, represented as 0 for Monday, 1 for Tuesday, ... 6 for Sunday.
         The original DataFrame with these additional three columns is returned.
     '''
-    df['percent_tip'] = 100 * df["tip_amount"]/(df["total_amount"] - df["tip_amount"])
+    df["percent_tip"] = 100 * df["tip_amount"].astype(float)/(df["total_amount"].astype(float) - df["tip_amount"].astype(float))
 
-    for index, row in df.iterrows():
-        dropoff = datetime.strptime(row['tpep_dropoff_datetime'], "%Y/%m/%d %H:%M:%S.%f") 
-        pickup = datetime.strptime(row['tpep_pickup_datetime'], "%Y/%m/%d %H:%M:%S.%f")  
+    dropoff = pd.to_datetime(df["tpep_dropoff_datetime"])
+    pickup = pd.to_datetime(df["tpep_pickup_datetime"])
 
-        df.loc[index, "duration"] = dropoff - pickup   
-        df.loc[index, "dayofweek"] = pickup.isoweekday()
+    df["duration"] = dropoff - pickup
+    df["duration"] = df["duration"].apply(lambda dura:  dura.total_seconds())
+
+    df["dayofweek"] = pickup.apply(datetime.weekday)
 
     return df
 
@@ -60,7 +61,8 @@ def impute_numeric_cols(df):
     columns = ["passenger_count", "trip_distance", "fare_amount","tip_amount","total_amount", "duration", "dayofweek"]
 
     for column in columns:
-        df = df[column].fillna(df[column].median())
+        df[column] = df[column].fillna(df[column].median())
+
 
     return df
 
@@ -75,19 +77,19 @@ def add_boro(df, file_name) -> pd.DataFrame:
         DO_borough that contain the borough corresponding to the drop off taxi zone (stored in DOLocationID)
         Returns df with these two additional columns (PU_borough and DO_borough).
     '''
-    df_file = pd.read_csv(file_name)
+    df_file = pd.read_csv(file_name, index_col=False)
 
     location_id = {}
 
     for index, row in df_file.iterrows():
-        location_id[row['LocationID']] = row["zone"]
+        location_id[row['LocationID']] = row["borough"]
 
     for index, row in df.iterrows():
         
-        df.loc[index, "PU_borough"] = location_id[row['PULocationID']]
-        df.loc[index, "DO_borough"] = location_id[row['DOLocationID']]
+        df.loc[index, "PU_borough"] = location_id.get(int(row['PULocationID']), float("nan"))
+        df.loc[index, "DO_borough"] = location_id.get(int(row['DOLocationID']), float("nan"))
 
-    return df
+    return df.reset_index()
 
 def encode_categorical_col(col,prefix): 
 
@@ -105,12 +107,19 @@ def encode_categorical_col(col,prefix):
         then the resulting columns would be labeled: 'PU_Bronx', 'PU_Brooklyn', 'PU_Manhattan', 'PU_Queens', and 'PU_Staten Island'. 
         The last one alphabetically is dropped (in this example, 'PU_Staten Island'), and the DataFrame restricted to the first k-1 columns is returned. 
     '''
-    df_dict = {}
-    index = 0
+    new_coloumns_dict = {}
+    col_to_drop = col[0]
+    for _, value in col.items():
+        new_coloumns_dict[prefix + str(value)] = [0 for i in range(len(col))]
+        if col_to_drop < value:
+            col_to_drop = value
 
-    for value in col:
-        df_dict[value] = []
+    df = pd.DataFrame(new_coloumns_dict)
 
-    for value in col:
-        df_dict[value].append(index)
+    for index, value in col.items():
+        df.loc[index, prefix + str(value)] = "1"
+
+    df = df.drop(prefix + col_to_drop, axis = 1)  
+    df = df.reindex(sorted(df.columns), axis=1)
+    return df
     
