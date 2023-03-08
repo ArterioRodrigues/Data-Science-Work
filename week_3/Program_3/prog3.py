@@ -26,7 +26,7 @@ def clean_df(df, year = 2015):
     else:
         exceptions = exceptions_1995
 
-    for column in df.columns:
+    for column in list(df.columns):
 
         if not column.lower() in exceptions:
             df = df.drop(columns = column)
@@ -167,9 +167,17 @@ def test_mse(loss_fnc=mse_loss):
     loss. This is a test function, used to test whether the loss_fnc returning True
     if the loss_fnc performs correctly (e.g. computes Mean Squared Error) and False otherwise.
     '''
-    theta = 10
-    vals = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    if loss_fnc(theta, vals):
+    vals = []
+    for num in range(10000):
+        vals.append(num)
+
+    theta = 500
+
+
+    if loss_fnc(theta, vals) == mse_loss(theta, vals):
+        return True
+
+    if loss_fnc(theta, vals) == mae_loss(theta, vals):
         return True
 
     return False
